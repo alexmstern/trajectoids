@@ -1,0 +1,91 @@
+:root {
+  --bg: #f2f1ef;
+  --ink: #2a2622;
+  --accent: #7b1e30;
+  --accent-hover: #641726;
+  --panel: rgba(255, 255, 255, 0.9);
+  --shadow: 0 2px 12px rgba(30, 20, 22, 0.14);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--ink);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* The 3D view fills the window; everything else floats on top of it. */
+#viewport {
+  position: fixed;
+  inset: 0;
+}
+
+canvas {
+  display: block;
+  /* Let pointer events handle touch drags instead of the browser scrolling or zooming. */
+  touch-action: none;
+}
+
+/* Two separate floating buttons, side by side at the bottom. */
+.controls {
+  position: fixed;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+button {
+  font: inherit;
+  border: none;
+  cursor: pointer;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+button:hover {
+  background: white;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pill {
+  height: 44px;
+  padding: 0 24px;
+  border-radius: 22px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.primary {
+  background: var(--accent);
+  color: white;
+}
+
+.primary:hover {
+  background: var(--accent-hover);
+}
+
+.round {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.round svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}

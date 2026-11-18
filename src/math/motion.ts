@@ -52,3 +52,13 @@ export function poseAt(roll: Roll, s: number, position: Vector3, orientation: Qu
   position.set(a.x + (b.x - a.x) * t, r, a.z + (b.z - a.z) * t)
   orientation.slerpQuaternions(orientations[lo]!, orientations[hi]!, t)
 }
+
+/**
+ * Core radius that gives a path of length L the scale σ = L / (2πr), i.e. the path is σ full
+ * turns of the core. Small σ barely carves the shape; large σ carves it down towards a plain
+ * sphere of radius r. Roughly 0.5–2 gives the most interesting shapes. (Sobolev et al. 2023,
+ * Fig. 3 caption.)
+ */
+export function radiusForSigma(length: number, sigma: number): number {
+  return length / (2 * Math.PI * sigma)
+}

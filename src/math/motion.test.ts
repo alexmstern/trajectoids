@@ -1,6 +1,6 @@
 import { IcosahedronGeometry, Quaternion, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { computeRoll, poseAt } from './motion'
+import { computeRoll, poseAt, radiusForSigma } from './motion'
 import { lShape } from './presets'
 import { carveVertices } from './shape'
 
@@ -38,5 +38,15 @@ describe('poseAt', () => {
       expect(minY).toBeGreaterThan(-1e-3)
       expect(minY).toBeLessThan(0.02 * r)
     }
+  })
+})
+
+describe('radiusForSigma', () => {
+  it('makes a path of length 2πr exactly one turn', () => {
+    expect(radiusForSigma(2 * Math.PI * 3, 1)).toBeCloseTo(3, 12)
+  })
+
+  it('shrinks r as σ grows (more turns over the same path)', () => {
+    expect(radiusForSigma(10, 2)).toBeCloseTo(radiusForSigma(10, 1) / 2, 12)
   })
 })

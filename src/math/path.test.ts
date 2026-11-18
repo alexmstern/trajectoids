@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { distance, pathLength, resample, type Point2 } from './path'
+import { cleanPath, distance, pathLength, resample, smooth, tidyPath, truncatePath, type Point2 } from './path'
 
 const L_SHAPE: Point2[] = [
   { x: 0, z: 0 },
@@ -41,5 +41,70 @@ describe('resample', () => {
   it('keeps start and end for a path shorter than ds', () => {
     const out = resample([{ x: 0, z: 0 }, { x: 0.1, z: 0 }], 1)
     expect(out).toEqual([{ x: 0, z: 0 }, { x: 0.1, z: 0 }])
+  })
+})
+
+describe('cleanPath', () => {
+  it('drops repeated and near-duplicate points', () => {
+    const raw = [{ x: 0, z: 0 }, { x: 0, z: 0 }, { x: 0.01, z: 0 }, { x: 1, z: 0 }, { x: 2, z: 0 }]
+    expect(cleanPath(raw, 0.1)).toEqual([{ x: 0, z: 0 }, { x: 1, z: 0 }, { x: 2, z: 0 }])
+  })
+
+  it('always keeps the true end point', () => {
+    const raw = [{ x: 0, z: 0 }, { x: 1, z: 0 }, { x: 1.05, z: 0 }]
+    expect(cleanPath(raw, 0.1)).toEqual([{ x: 0, z: 0 }, { x: 1.05, z: 0 }])
+  })
+
+  it('collapses a tap (no real movement) to a single point', () => {
+    expect(cleanPath([{ x: 0, z: 0 }, { x: 0.001, z: 0 }], 0.1)).toHaveLength(1)
+  })
+})
+
+describe('smooth', () => {
+  it('leaves a straight, evenly spaced line unchanged', () => {
+    const line = resample([{ x: 0, z: 0 }, { x: 5, z: 0 }], 0.5)
+    const out = smooth(line, 3, 2)
+    out.forEach((p, i) => {
+      expect(p.x).toBeCloseTo(line[i]!.x, 12)
+      expect(p.z).toBeCloseTo(line[i]!.z, 12)
+    })
+  })
+
+  it('never moves the endpoints', () => {
+    const wiggly = Array.from({ length: 20 }, (_, i) => ({ x: i, z: i % 2 }))
+    const out = smooth(wiggly, 3, 3)
+    expect(out[0]).toEqual(wiggly[0])
+    expect(out[19]).toEqual(wiggly[19])
+  })
+
+  it('reduces zigzag jitter', () => {
+    const zigzag = Array.from({ length: 40 }, (_, i) => ({ x: i * 0.1, z: i % 2 ? 0.05 : -0.05 }))
+    const amplitude = (ps: Point2[]) => Math.max(...ps.slice(5, -5).map((p) => Math.abs(p.z)))
+    expect(amplitude(smooth(zigzag, 2, 2))).toBeLessThan(0.2 * amplitude(zigzag))
+  })
+})
+
+describe('tidyPath', () => {
+  it('turns messy input into an evenly spaced path with the same endpoints', () => {
+    const raw = [
+      { x: 0, z: 0 }, { x: 0, z: 0 }, { x: 0.3, z: 0.02 }, { x: 0.31, z: 0.02 },
+      { x: 1.2, z: -0.03 }, { x: 2, z: 0.4 }, { x: 2.1, z: 1.5 }, { x: 2.1, z: 1.5 },
+    ]
+    const out = tidyPath(raw, 0.05)
+    expect(out[0]).toEqual(raw[0])
+    expect(out[out.length - 1]).toEqual(raw[raw.length - 1])
+    for (let i = 1; i < out.length; i++) expect(distance(out[i - 1]!, out[i]!)).toBeGreaterThan(0)
+  })
+})
+
+describe('truncatePath', () => {
+  it('cuts the path at exactly maxLength', () => {
+    const out = truncatePath(L_SHAPE, 5) // 3 along x, then 2 up the second leg
+    expect(out).toEqual([{ x: 0, z: 0 }, { x: 3, z: 0 }, { x: 3, z: 2 }])
+    expect(pathLength(out)).toBeCloseTo(5, 12)
+  })
+
+  it('leaves shorter paths unchanged', () => {
+    expect(truncatePath(L_SHAPE, 100)).toEqual(L_SHAPE)
   })
 })

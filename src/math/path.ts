@@ -60,3 +60,69 @@ export function resample(points: readonly Point2[], ds: number): Point2[] {
   }
   return out
 }
+
+/**
+ * Drop extraneous points by filtering by minimum distance.
+ */
+export function cleanPath(points: readonly Point2[], minDist: number): Point2[] {
+  const out: Point2[] = []
+  for (const p of points) {
+    const prev = out[out.length - 1]
+    if (!prev || distance(prev, p) >= minDist) out.push({ ...p })
+  }
+
+  // If the true end point was dropped, move the last kept point onto it.
+  const last = points[points.length - 1]
+  if (last && out.length > 1) out[out.length - 1] = { ...last }
+  return out
+}
+
+/**
+ * Moving-average smoothing: each point becomes the mean of itself and up to `window` neighbours
+ * on each side.
+ */
+export function smooth(points: readonly Point2[], window: number, passes = 1): Point2[] {
+  let current = points.map((p) => ({ ...p }))
+  for (let pass = 0; pass < passes; pass++) {
+    current = current.map((_, i) => {
+      const k = Math.min(window, i, current.length - 1 - i)
+      let x = 0
+      let z = 0
+      for (let j = i - k; j <= i + k; j++) {
+        x += current[j]!.x
+        z += current[j]!.z
+      }
+      return { x: x / (2 * k + 1), z: z / (2 * k + 1) }
+    })
+  }
+  return current
+}
+
+/**
+ * Turn raw pointer input into a usable path: remove duplicates, space points evenly `spacing`
+ * apart, then smooth out hand jitter. `smoothing` is the averaging window in path length (world
+ * units); larger values give rounder curves.
+ */
+export function tidyPath(raw: readonly Point2[], spacing: number, smoothing = 10 * spacing): Point2[] {
+  const even = resample(cleanPath(raw, spacing / 4), spacing)
+  return smooth(even, Math.max(1, Math.round(smoothing / spacing / 2)), 2)
+}
+
+/** Cut the path off once it reaches `maxLength` (interpolating the final point). */
+export function truncatePath(points: readonly Point2[], maxLength: number): Point2[] {
+  const out: Point2[] = points.length > 0 ? [{ ...points[0]! }] : []
+  let total = 0
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!
+    const b = points[i]!
+    const segLen = distance(a, b)
+    if (total + segLen >= maxLength) {
+      const t = segLen > 0 ? (maxLength - total) / segLen : 0
+      out.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t })
+      return out
+    }
+    total += segLen
+    out.push({ ...b })
+  }
+  return out
+}
