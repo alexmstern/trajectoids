@@ -2,7 +2,8 @@ import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/600.css'
 import './style.css'
 import { cleanPath, pathLength, tidyPath, truncatePath, type Point2 } from './math/path'
-import { lShape } from './math/presets'
+import { LOOP_PRESETS, sineWave } from './math/presets'
+import { closedRoll } from './math/loops'
 import { computeRoll, poseAt, radiusForSigma, type Roll } from './math/motion'
 import { createCameraRig } from './scene/camera'
 import { createPathLine, createTrajectoidMesh, disposeObject } from './scene/trajectoid'
@@ -36,7 +37,8 @@ const ICONS = {
 
 // --- Current build: the path line, the trajectoid, and its roll ----------------------------------
 let pathLine: Object3D | null = null
-let current: { path: Point2[]; roll: Roll; mesh: Mesh; R: number } | null = null
+// `line` is the path as drawn on the floor; `looping` rolls around a closed loop with no pause.
+let current: { line: Point2[]; roll: Roll; mesh: Mesh; R: number; looping: boolean } | null = null
 let travelled = 0
 let playing = true
 let mode: 'draw' | 'view' = 'view'
@@ -47,23 +49,29 @@ function showPath(points: readonly Point2[]) {
   if (pathLine) stage.scene.add(pathLine)
 }
 
-/** Compute the trajectoid for a path and start it rolling. */
+/** Compute the trajectoid for an open path and start it rolling. */
 function build(path: Point2[]) {
-  if (current) disposeObject(current.mesh)
   const r = Math.min(Math.max(radiusForSigma(pathLength(path), sigma), minRadius), maxRadius)
-  const R = outerRatio * r
   const roll = computeRoll(path, r)
-  const mesh = createTrajectoidMesh(roll.downDirs, r, R, stage.environment)
+  start(roll, roll.points, false)
+}
+
+/** Carve the trajectoid for a roll and start it rolling. */
+function start(roll: Roll, line: Point2[], looping: boolean) {
+  if (current) disposeObject(current.mesh)
+  const R = outerRatio * roll.r
+  const mesh = createTrajectoidMesh(roll.downDirs, roll.r, R, stage.environment)
   stage.scene.add(mesh)
-  current = { path, roll, mesh, R }
+  current = { line, roll, mesh, R, looping }
   travelled = 0
-  showPath(roll.points)
+  showPath(line)
 }
 
 stage.onFrame((dt) => {
   if (!current) return
   if (playing) travelled += speed * dt
-  if (travelled > current.roll.length + speed * pauseAtEnd) travelled = 0
+  if (current.looping) travelled %= current.roll.length // seamless: the end pose is the start pose
+  else if (travelled > current.roll.length + speed * pauseAtEnd) travelled = 0
   poseAt(current.roll, travelled, current.mesh.position, current.mesh.quaternion)
 })
 
@@ -92,9 +100,9 @@ function enterViewMode(instant = false) {
   if (!current) return
   mode = 'view'
   stage.scene.add(current.mesh)
-  showPath(current.roll.points)
+  showPath(current.line)
   drawInput.setEnabled(false)
-  rig.toPath(current.roll.points, current.R, instant)
+  rig.toPath(current.line, current.R, instant)
   ui.drawButton.textContent = 'Draw'
   ui.playButton.disabled = false
 }
@@ -114,6 +122,12 @@ ui.playButton.addEventListener('click', () => {
 })
 updatePlayButton()
 
-// Example on first load, so the page isn't empty. With r set from σ, each leg is σ/2 = 0.75 turns.
-build(lShape(6))
+// --- Start-up ------------------------------------------------------------------------------------
+// ?loop=heart|eight|oval shows a closed loop rolling forever (see math/loops.ts) instead of the wave.
+const preset = LOOP_PRESETS[new URLSearchParams(location.search).get('loop') ?? '']
+const loop = preset?.path()
+const loopRoll = preset && loop && closedRoll(loop, preset.laps, preset.minSigma)
+
+if (loop && loopRoll) start(loopRoll, loop, true)
+else build(sineWave(10, 2, 1.5)) // example on first load: a wave rolling toward the viewer
 enterViewMode(true)

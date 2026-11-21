@@ -51,7 +51,15 @@ export function createTrajectoidMesh(
  * The path drawn on the floor, with a dot at each end.
  */
 export function createPathLine(points: readonly Point2[], width: number): Group {
-  const material = new MeshBasicMaterial({ color: 0x7b1e30, side: DoubleSide })
+  // polygonOffset pulls the line toward the camera in the depth test, so it never flickers into the
+  // floor it lies on, even when the camera is far away.
+  const material = new MeshBasicMaterial({
+    color: 0x7b1e30,
+    side: DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  })
   const group = new Group()
   group.add(new Mesh(createRibbonGeometry(points, width), material))
 

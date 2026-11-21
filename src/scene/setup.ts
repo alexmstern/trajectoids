@@ -1,7 +1,6 @@
 import {
   Color,
   DirectionalLight,
-  Fog,
   HemisphereLight,
   Mesh,
   MeshStandardMaterial,
@@ -25,6 +24,25 @@ export interface Stage {
   onFrame(callback: (dt: number) => void): void
 }
 
+/** A soft studio room for metallic materials to reflect. */
+export function createEnvironment(renderer: WebGLRenderer): Texture {
+  const pmrem = new PMREMGenerator(renderer)
+  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+  pmrem.dispose()
+  return environment
+}
+
+/** Soft sky/ground fill plus a shadow-casting "sun". */
+export function addLights(scene: Scene): void {
+  scene.add(new HemisphereLight(0xffffff, 0xb3afa9, 1.2))
+  const sun = new DirectionalLight(0xffffff, 2)
+  sun.position.set(5, 12, 4)
+  sun.castShadow = true
+  sun.shadow.mapSize.set(4096, 4096)
+  Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25 })
+  scene.add(sun)
+}
+
 /** Renderer, camera, lights and a floor at y = 0. */
 export function createStage(container: HTMLElement): Stage {
   const renderer = new WebGLRenderer({ antialias: true })
@@ -35,23 +53,12 @@ export function createStage(container: HTMLElement): Stage {
   container.appendChild(renderer.domElement)
 
   const scene = new Scene()
-  const background = new Color(0xf2f1ef)
-  scene.background = background
-  scene.fog = new Fog(background, 30, 90) // fade the floor into the background with distance
+  scene.background = new Color(0xf2f1ef)
 
-  const pmrem = new PMREMGenerator(renderer)
-  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
-  pmrem.dispose()
-
+  const environment = createEnvironment(renderer)
   const camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 300)
 
-  scene.add(new HemisphereLight(0xffffff, 0xb3afa9, 1.2))
-  const sun = new DirectionalLight(0xffffff, 2)
-  sun.position.set(5, 12, 4)
-  sun.castShadow = true
-  sun.shadow.mapSize.set(4096, 4096)
-  Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25 })
-  scene.add(sun)
+  addLights(scene)
 
   const floor = new Mesh(new PlaneGeometry(400, 400), new MeshStandardMaterial({ color: 0xe2e0dc }))
   floor.rotation.x = -Math.PI / 2

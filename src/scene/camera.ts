@@ -5,6 +5,7 @@ import type { Stage } from './setup'
 const DRAW_AREA = 16 // world units visible across the shorter screen side while drawing
 const VIEW_ELEVATION = MathUtils.degToRad(35) // angle above the floor for the ¾ view
 const MOVE_SECONDS = 1.2
+const MARGIN = 0.85 // fraction of the screen the framed path may fill, leaving room for the UI
 
 /**
  * Distance at which a sphere of `radius` fits on screen for a camera with vertical field of view
@@ -15,6 +16,57 @@ export function fitDistance(radius: number, vfovDeg: number, aspect: number): nu
   const halfV = MathUtils.degToRad(vfovDeg) / 2
   const halfH = Math.atan(Math.tan(halfV) * aspect)
   return radius / Math.sin(Math.min(halfV, halfH))
+}
+
+/**
+ * Distance from `center` along unit direction `dir` (pointing from the target to the camera) at which
+ * every corner of the box [min, max] is on screen, filling at most `margin` of it in each direction.
+ * For each corner, depth along the view axis is (distance − along), so it fits horizontally when
+ * |sideways| ≤ (distance − along)·tan(halfH)·margin, and likewise vertically.
+ */
+export function fitBoxDistance(
+  min: Vector3,
+  max: Vector3,
+  center: Vector3,
+  dir: Vector3,
+  vfovDeg: number,
+  aspect: number,
+  margin = MARGIN,
+): number {
+  const right = new Vector3(0, 1, 0).cross(dir).normalize()
+  const up = dir.clone().cross(right)
+  const tanV = Math.tan(MathUtils.degToRad(vfovDeg) / 2) * margin
+  const tanH = tanV * aspect
+  const p = new Vector3()
+  let distance = 0
+  for (const x of [min.x, max.x])
+    for (const y of [min.y, max.y])
+      for (const z of [min.z, max.z]) {
+        p.set(x, y, z).sub(center)
+        const along = p.dot(dir)
+        distance = Math.max(distance, along + Math.abs(p.dot(right)) / tanH, along + Math.abs(p.dot(up)) / tanV)
+      }
+  return distance
+}
+
+/** Camera position and look-at point for the ¾ view framing a path and a trajectoid of outer radius R. */
+export function framePath(points: readonly Point2[], R: number, vfovDeg: number, aspect: number) {
+  // Bounding box of the path, padded by the trajectoid's size (it rolls up to R beside the path's
+  // ends and stands up to 2R tall).
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+  for (const p of points) {
+    minX = Math.min(minX, p.x)
+    maxX = Math.max(maxX, p.x)
+    minZ = Math.min(minZ, p.z)
+    maxZ = Math.max(maxZ, p.z)
+  }
+  const min = new Vector3(minX - R, 0, minZ - R)
+  const max = new Vector3(maxX + R, 2 * R, maxZ + R)
+  const target = new Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2)
+
+  const dir = new Vector3(0, Math.sin(VIEW_ELEVATION), Math.cos(VIEW_ELEVATION))
+  const distance = fitBoxDistance(min, max, target, dir, vfovDeg, aspect)
+  return { position: target.clone().addScaledVector(dir, distance), target }
 }
 
 export interface CameraRig {
@@ -74,20 +126,8 @@ export function createCameraRig(stage: Stage): CameraRig {
 
     toPath(points, R, instant = false) {
       currentView = (now) => rig.toPath(points, R, now)
-      // Bounding circle of the path, padded by the trajectoid's size.
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
-      for (const p of points) {
-        minX = Math.min(minX, p.x)
-        maxX = Math.max(maxX, p.x)
-        minZ = Math.min(minZ, p.z)
-        maxZ = Math.max(maxZ, p.z)
-      }
-      const center = new Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2)
-      const radius = Math.hypot(maxX - minX, maxZ - minZ) / 2 + 2 * R
-
-      const distance = fitDistance(radius, camera.fov, camera.aspect)
-      const offset = new Vector3(0, Math.sin(VIEW_ELEVATION), Math.cos(VIEW_ELEVATION)).multiplyScalar(distance)
-      moveTo(center.clone().add(offset), center, instant)
+      const { position, target: lookAt } = framePath(points, R, camera.fov, camera.aspect)
+      moveTo(position, lookAt, instant)
     },
   }
   return rig
