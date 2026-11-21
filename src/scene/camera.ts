@@ -19,14 +19,18 @@ export function fitDistance(radius: number, vfovDeg: number, aspect: number): nu
 
 export interface CameraRig {
   /** Look straight down at the drawing area. */
-  toOverhead(): void
+  toOverhead(instant?: boolean): void
   /** Tilted view framing the path and a trajectoid of outer radius R. */
   toPath(points: readonly Point2[], R: number, instant?: boolean): void
 }
 
-/** Smooth camera moves between the overhead drawing view and the ¾ viewing angle. */
+/**
+ * The camera is fixed (no user orbit/zoom): it moves smoothly between the overhead drawing view
+ * and a ¾ view framed on the current path, and re-frames itself when the window is resized.
+ */
 export function createCameraRig(stage: Stage): CameraRig {
-  const { camera, controls } = stage
+  const { camera } = stage
+  const target = new Vector3() // the point the camera looks at
   const fromPos = new Vector3()
   const fromTarget = new Vector3()
   const toPos = new Vector3()
@@ -38,30 +42,38 @@ export function createCameraRig(stage: Stage): CameraRig {
     progress = Math.min(1, progress + dt / MOVE_SECONDS)
     const t = progress * progress * (3 - 2 * progress) // smoothstep: ease in and out
     camera.position.lerpVectors(fromPos, toPos, t)
-    controls.target.lerpVectors(fromTarget, toTarget, t)
+    target.lerpVectors(fromTarget, toTarget, t)
+    camera.lookAt(target)
   })
 
-  function moveTo(position: Vector3, target: Vector3, instant = false) {
+  function moveTo(position: Vector3, lookAt: Vector3, instant = false) {
     fromPos.copy(camera.position)
-    fromTarget.copy(controls.target)
+    fromTarget.copy(target)
     toPos.copy(position)
-    toTarget.copy(target)
+    toTarget.copy(lookAt)
     progress = 0
     if (instant) {
       camera.position.copy(position)
-      controls.target.copy(target)
+      target.copy(toTarget)
+      camera.lookAt(target)
       progress = 1
     }
   }
 
-  return {
-    toOverhead() {
+  // Re-apply the current view when the screen size changes (e.g. rotating a phone).
+  let currentView: (instant: boolean) => void = () => {}
+  window.addEventListener('resize', () => currentView(true))
+
+  const rig: CameraRig = {
+    toOverhead(instant = false) {
+      currentView = rig.toOverhead
       const height = fitDistance(DRAW_AREA / 2, camera.fov, camera.aspect)
-      // The tiny z offset keeps OrbitControls from flipping when looking exactly straight down.
-      moveTo(new Vector3(0, height, 0.001), new Vector3(0, 0, 0))
+      // The tiny z offset avoids looking exactly straight down, where lookAt's "up" is undefined.
+      moveTo(new Vector3(0, height, 0.001), new Vector3(0, 0, 0), instant)
     },
 
     toPath(points, R, instant = false) {
+      currentView = (now) => rig.toPath(points, R, now)
       // Bounding circle of the path, padded by the trajectoid's size.
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
       for (const p of points) {
@@ -78,4 +90,5 @@ export function createCameraRig(stage: Stage): CameraRig {
       moveTo(center.clone().add(offset), center, instant)
     },
   }
+  return rig
 }

@@ -8,16 +8,19 @@ import {
   PCFSoftShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
+  PMREMGenerator,
   Scene,
+  type Texture,
   WebGLRenderer,
 } from 'three'
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 
 export interface Stage {
   scene: Scene
   camera: PerspectiveCamera
   renderer: WebGLRenderer
-  controls: OrbitControls
+  /** A soft studio room for metallic materials to reflect (metal renders black without one). */
+  environment: Texture
   /** Register a per-frame callback; receives seconds since the last frame. */
   onFrame(callback: (dt: number) => void): void
 }
@@ -36,11 +39,11 @@ export function createStage(container: HTMLElement): Stage {
   scene.background = background
   scene.fog = new Fog(background, 30, 90) // fade the floor into the background with distance
 
-  const camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 300)
+  const pmrem = new PMREMGenerator(renderer)
+  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+  pmrem.dispose()
 
-  const controls = new OrbitControls(camera, renderer.domElement)
-  controls.enableDamping = true
-  controls.maxPolarAngle = Math.PI / 2 - 0.05 // don't let the camera go under the floor
+  const camera = new PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 300)
 
   scene.add(new HemisphereLight(0xffffff, 0xb3afa9, 1.2))
   const sun = new DirectionalLight(0xffffff, 2)
@@ -67,9 +70,8 @@ export function createStage(container: HTMLElement): Stage {
     const dt = Math.min((now - previous) / 1000, 0.1) // clamp after tab switches
     previous = now
     for (const cb of callbacks) cb(dt)
-    controls.update()
     renderer.render(scene, camera)
   })
 
-  return { scene, camera, renderer, controls, onFrame: (cb) => callbacks.push(cb) }
+  return { scene, camera, renderer, environment, onFrame: (cb) => callbacks.push(cb) }
 }

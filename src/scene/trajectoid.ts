@@ -10,6 +10,7 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   Object3D,
+  type Texture,
   Vector3,
 } from 'three'
 import type { Point2 } from '../math/path'
@@ -17,22 +18,31 @@ import { carveVertices } from '../math/shape'
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js'
 
 const PATH_HEIGHT = 0.004 // just above the floor, to avoid flickering
-const CREASE_ANGLE = MathUtils.degToRad(35)
+const CREASE_ANGLE = MathUtils.degToRad(180) // smooth every edge; lower (e.g. 35) for crisp ridges
 
 /**
- * Build the trajectoid mesh. `detail` is the icosphere subdivision level.
+ * Build the trajectoid mesh. `envMap` is what the metal reflects; `detail` is the icosphere
+ * subdivision level.
  */
-export function createTrajectoidMesh(downDirs: readonly Vector3[], r: number, R: number, detail = 40): Mesh {
+export function createTrajectoidMesh(
+  downDirs: readonly Vector3[],
+  r: number,
+  R: number,
+  envMap: Texture,
+  detail = 64,
+): Mesh {
   const sphere = new IcosahedronGeometry(1, detail)
   carveVertices(sphere.getAttribute('position').array as Float32Array, downDirs, r, R)
 
-  // Smooth shading across shallow angles (hides the triangle facets) while keeping edges sharper
-  // than CREASE_ANGLE crisp (the ridges where a cut meets the sphere).
+  // Smooth shading across edges up to CREASE_ANGLE. Crisp ridges zigzag along the triangles, so
+  // smoothing them too makes each ridge read as a soft bevel instead.
   const geometry = toCreasedNormals(sphere, CREASE_ANGLE)
   sphere.dispose()
   geometry.computeBoundingSphere()
 
-  const mesh = new Mesh(geometry, new MeshStandardMaterial({ color: 0xccd0f4, roughness: 0.6 }))
+  // Brushed silver: each flat cut reflects a different part of the room, so the faces stand out.
+  const material = new MeshStandardMaterial({ color: 0x717378, metalness: 1, roughness: 0.45, envMap })
+  const mesh = new Mesh(geometry, material)
   mesh.castShadow = true
   return mesh
 }

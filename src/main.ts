@@ -12,7 +12,7 @@ import type { Mesh, Object3D } from 'three'
 
 const sigma = 1.5 // path length / core circumference; sets r for each drawn path
 const outerRatio = 1.3 // R / r: outer sphere the shape is carved from (the paper uses 1.3)
-const speed = 1.5 // world units per second
+const speed = 1.75 // world units per second
 const pauseAtEnd = 1 // seconds before restarting
 const lineWidth = 0.12 // world units
 const drawSpacing = 0.05 // spacing of the tidied drawn path, in world units
@@ -53,7 +53,7 @@ function build(path: Point2[]) {
   const r = Math.min(Math.max(radiusForSigma(pathLength(path), sigma), minRadius), maxRadius)
   const R = outerRatio * r
   const roll = computeRoll(path, r)
-  const mesh = createTrajectoidMesh(roll.downDirs, r, R)
+  const mesh = createTrajectoidMesh(roll.downDirs, r, R, stage.environment)
   stage.scene.add(mesh)
   current = { path, roll, mesh, R }
   travelled = 0
@@ -67,7 +67,7 @@ stage.onFrame((dt) => {
   poseAt(current.roll, travelled, current.mesh.position, current.mesh.quaternion)
 })
 
-// --- Modes: drawing (overhead, drag draws) and viewing (tilted, drag orbits) ----------------------
+// --- Modes: drawing (overhead, drag draws) and viewing (tilted, fixed camera) ---------------------
 const drawInput = createDrawInput(stage, {
   onStroke: (raw) => showPath(truncatePath(cleanPath(raw, drawSpacing / 4), maxPathLength)),
   onFinish: (raw) => {
@@ -83,7 +83,6 @@ function enterDrawMode() {
   current?.mesh.removeFromParent() // hidden until a new path is drawn (or the user cancels)
   showPath([])
   drawInput.setEnabled(true)
-  stage.controls.enabled = false
   rig.toOverhead()
   ui.drawButton.textContent = 'Cancel'
   ui.playButton.disabled = true
@@ -95,7 +94,6 @@ function enterViewMode(instant = false) {
   stage.scene.add(current.mesh)
   showPath(current.roll.points)
   drawInput.setEnabled(false)
-  stage.controls.enabled = true
   rig.toPath(current.roll.points, current.R, instant)
   ui.drawButton.textContent = 'Draw'
   ui.playButton.disabled = false
